@@ -1,4 +1,5 @@
 const permit = require('../utils/permitInstance');
+const axios = require('axios');
 
 // Register a user in Permit.io
 const registerUser = async (req, res, next) => {
@@ -31,65 +32,43 @@ const registerUser = async (req, res, next) => {
 // Assign a role to a user for a specific resource
 const assignRole = async (req, res, next) => {
   try {
-    console.log('Starting assignRole function');
     const { userId, roleKey, resourceType, resourceKey, tenant } = req.body;
-    console.log('Request body:', { userId, roleKey, resourceType, resourceKey, tenant });
-
-    if (!userId || !roleKey || !resourceType || !resourceKey || !tenant) {
-      console.log('Missing required fields');
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    console.log('Fetching roles');
-    const roles = await permit.api.roles.list();
-    console.log('Roles fetched:', roles);
-
-    const fullRoleKey = `${resourceType}${roleKey}`;
-    console.log('Looking for role with key:', fullRoleKey);
-    const role = roles.find(r => r.key === fullRoleKey);
-    if (!role) {
-      console.log('Role not found');
-      return res.status(400).json({ error: 'Role not found' });
-    }
-    console.log('Role found:', role);
-
-    console.log('Fetching resource instances');
-    const resourceInstances = await permit.api.resourceInstances.list();
-    console.log('Resource instances fetched:', resourceInstances);
-
-    const instance = resourceInstances.find(instance =>
-      instance.resource === resourceType && instance.key === resourceKey
-    );
-
-    if (!instance) {
-      console.log('Resource instance does not exist');
-      return res.status(400).json({ error: 'Resource instance does not exist' });
-    }
-    console.log('Resource instance exists');
 
     const assignedRole = {
       user: userId,
-      role: role.key,  // Use the role key instead of ID
+      role: roleKey,
       resource_instance: `${resourceType}:${resourceKey}`,
-      tenant: tenant
+      tenant: tenant || 'default'
     };
 
     console.log('Attempting to assign role:', JSON.stringify(assignedRole, null, 2));
 
-    const response = await permit.api.roleAssignments.assign(assignedRole);
-    console.log('Role assignment response:', response);
+    const PROJECT_ID = process.env.PROJECT_ID;
+    const ENVIRONMENT_ID = process.env.ENVIRONMENT_ID;
 
-    res.status(200).json({ message: 'Role assigned successfully', response });
+    const url = `https://api.permit.io/v2/facts/${PROJECT_ID}/${ENVIRONMENT_ID}/role_assignments`;
+
+    console.log('Request URL:', url);
+
+    const response = await axios.post(url, assignedRole, {
+      headers: {
+        'Authorization': `Bearer ${process.env.PERMIT_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('Response:', JSON.stringify(response.data, null, 2));
+
+    res.status(200).json({ message: 'Role assigned successfully', response: response.data });
   } catch (error) {
-    console.error('Error assigning role:', error);
-    console.error('Error details:', JSON.stringify(error, null, 2));
+    console.error('Error assigning role:', error.response?.data || error.message);
     res.status(500).json({
       error: 'Failed to assign role',
-      details: error.message,
-      stack: error.stack
+      details: error.response?.data || error.message
     });
   }
 };
+
 
 const getUsers = async (req, res, next) => {
   try {
@@ -133,6 +112,45 @@ const checkPermission = async (req, res, next) => {
   } catch (error) {
     console.error('Error checking permission:', error);
     res.status(500).json({ error: 'Failed to check permission', details: error.message });
+  }
+};
+
+const assignSuperAdminRole = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    await permit.api.roleAssignments.assign({
+      user: userId,
+      role: "SuperAdmin",
+      tenant: "default"
+    });
+    res.status(200).json({ message: "SuperAdmin role assigned successfully" });
+  } catch (error) {
+    console.error("Error assigning SuperAdmin role:", error);
+    res.status(500).json({ error: "Failed to assign SuperAdmin role" });
+  }
+};
+
+const createRole = async (req, res) => {
+  try {
+    const { key, name, description, permissions, extends: extendedRoles } = req.body;
+
+    const roleData = {
+      key,
+      name,
+      description,
+      permissions,
+      extends: extendedRoles
+    };
+
+    const response = await permit.api.roles.create(roleData);
+
+    res.status(201).json({ message: 'Role created successfully', role: response });
+  } catch (error) {
+    console.error('Error creating role:', error);
+    res.status(500).json({
+      error: 'Failed to create role',
+      details: error.response?.data?.message || error.message
+    });
   }
 };
 
@@ -258,6 +276,8 @@ module.exports = {
   getUsers,
   getUserRoles,
   getRole,
+  createRole,
+  assignSuperAdminRole,
   createResourceInstance,
   listResourceInstances,
   listRolesAndResources
