@@ -44,11 +44,20 @@ const getCategory = async (req, res) => {
 
 const updateCategory = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { id } = req.params; // This is the instance ID (the category ID)
         const { name, description } = req.body;
-        // Here you would typically update the category in your database
-        // For Permit.io, we can update the resource instance
-        const updatedCategory = await permit.api.resourceInstances.update('Category', id, { key: name });
+
+        // Properly format the resource key
+        const instanceKey = `Category:${id}`;
+
+        // Update the resource instance with Permit.io
+        const updatedCategory = await permit.api.resourceInstances.update(instanceKey, {
+            key: name, // Update the name as the key
+            attributes: {
+                description // Optionally update the description as an attribute
+            }
+        });
+
         res.json(updatedCategory);
     } catch (error) {
         console.error('Error updating category:', error);

@@ -98,11 +98,34 @@ const checkPermission = async (req, res, next) => {
   try {
     const { userId, action, resourceType, resourceId } = req.body;
 
-    if (!userId || !action || !resourceType || !resourceId) {
+    // Allow resourceId to be optional when creating new resources
+    if (!userId || !action || !resourceType || (!resourceId && action !== 'create')) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const permitted = await permit.check(userId, action, `${resourceType}:${resourceId}`);
+    // Check permission at the document level
+    const resource = resourceId ? `${resourceType}:${resourceId}` : `${resourceType}:default`;
+    let permitted = await permit.check(userId, action, resource);
+
+    if (!permitted) {
+      // If no permission at document level, check if the document has a parent category
+      const document = await permit.api.resourceInstances.get('Document', resourceId);
+      if (document) {
+        // Get the category (parent relationship)
+        const categoryRelation = await permit.api.relationshipTuples.list({
+          subject: `Document:${resourceId}`,
+          relation: 'parent'
+        });
+
+        const categoryId = categoryRelation.data[0]?.object?.split(':')[1];
+
+        if (categoryId) {
+          // Check permission at the category level
+          const categoryResource = `Category:${categoryId}`;
+          permitted = await permit.check(userId, action, categoryResource);
+        }
+      }
+    }
 
     if (permitted) {
       res.status(200).json({ permitted: true, message: 'User has permission' });
@@ -114,6 +137,8 @@ const checkPermission = async (req, res, next) => {
     res.status(500).json({ error: 'Failed to check permission', details: error.message });
   }
 };
+
+
 
 const assignSuperAdminRole = async (req, res) => {
   try {
@@ -153,6 +178,7 @@ const createRole = async (req, res) => {
     });
   }
 };
+
 
 // Create a relationship between resources
 const createRelationship = async (req, res, next) => {

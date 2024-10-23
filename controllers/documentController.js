@@ -3,25 +3,31 @@ const permit = require('../utils/permitInstance');
 const createDocument = async (req, res) => {
     try {
         const { title, content, categoryId } = req.body;
-        // Here you would typically save the document to your database
-        // For now, we'll just create a resource instance in Permit.io
+
+        // Replace spaces with underscores and ensure the key is valid
+        const key = title.replace(/\s+/g, '_');  // This transforms "Document available to super admin" to "Document_available_to_super_admin"
+
+        // Create the document resource instance
         const document = await permit.api.resourceInstances.create({
             resource: 'Document',
-            key: title,
+            key: key,  // Use the sanitized key
             tenant: 'default'
         });
+
         // Create a relationship between the document and its category
         await permit.api.relationshipTuples.create({
             subject: `Category:${categoryId}`,
             relation: 'parent',
             object: `Document:${document.key}`
         });
+
         res.status(201).json(document);
     } catch (error) {
         console.error('Error creating document:', error);
         res.status(500).json({ error: 'Failed to create document' });
     }
 };
+
 
 const getDocuments = async (req, res) => {
     try {
@@ -50,16 +56,24 @@ const getDocument = async (req, res) => {
 const updateDocument = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, content } = req.body;
-        // Here you would typically update the document in your database
-        // For Permit.io, we can update the resource instance
-        const updatedDocument = await permit.api.resourceInstances.update('Document', id, { key: title });
+        const { title, content, attributes = {} } = req.body; // Ensure attributes are passed or default to empty
+
+        const updatedDocument = await permit.api.resourceInstances.update(
+            'Document',
+            id,
+            {
+                key: title,
+                attributes: attributes // Send attributes even if empty
+            }
+        );
+
         res.json(updatedDocument);
     } catch (error) {
         console.error('Error updating document:', error);
         res.status(500).json({ error: 'Failed to update document' });
     }
 };
+
 
 const deleteDocument = async (req, res) => {
     try {
