@@ -2,31 +2,30 @@ const permit = require('../utils/permitInstance');
 
 const createDocument = async (req, res) => {
     try {
-        const { title, content, categoryId } = req.body;
+        const { key, tenant, categoryKey, ownerId } = req.body;
 
-        // Replace spaces with underscores and ensure the key is valid
-        const key = title.replace(/\s+/g, '_');  // This transforms "Document available to super admin" to "Document_available_to_super_admin"
+        if (!key || !categoryKey || !ownerId) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
 
-        // Create the document resource instance
+        // Create the document resource instance with attributes
         const document = await permit.api.resourceInstances.create({
             resource: 'Document',
-            key: key,  // Use the sanitized key
-            tenant: 'default'
-        });
-
-        // Create a relationship between the document and its category
-        await permit.api.relationshipTuples.create({
-            subject: `Category:${categoryId}`,
-            relation: 'parent',
-            object: `Document:${document.key}`
+            key: key,
+            tenant: tenant || 'default',
+            attributes: {
+                categoryKey: categoryKey,
+                ownerId: ownerId,
+            },
         });
 
         res.status(201).json(document);
     } catch (error) {
         console.error('Error creating document:', error);
-        res.status(500).json({ error: 'Failed to create document' });
+        res.status(500).json({ error: 'Failed to create document', details: error.message });
     }
 };
+
 
 
 const getDocuments = async (req, res) => {

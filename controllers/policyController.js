@@ -29,43 +29,22 @@ const registerUser = async (req, res, next) => {
   }
 };
 
-// Assign a role to a user for a specific resource
-const assignRole = async (req, res, next) => {
+
+const assignAdmin = async (req, res) => {
   try {
-    const { userId, roleKey, resourceType, resourceKey, tenant } = req.body;
+    const { userId, tenantId } = req.body;
 
-    const assignedRole = {
-      user: userId,
-      role: roleKey,
-      resource_instance: `${resourceType}:${resourceKey}`,
-      tenant: tenant || 'default'
-    };
-
-    console.log('Attempting to assign role:', JSON.stringify(assignedRole, null, 2));
-
-    const PROJECT_ID = process.env.PROJECT_ID;
-    const ENVIRONMENT_ID = process.env.ENVIRONMENT_ID;
-
-    const url = `https://api.permit.io/v2/facts/${PROJECT_ID}/${ENVIRONMENT_ID}/role_assignments`;
-
-    console.log('Request URL:', url);
-
-    const response = await axios.post(url, assignedRole, {
-      headers: {
-        'Authorization': `Bearer ${process.env.PERMIT_TOKEN}`,
-        'Content-Type': 'application/json'
-      }
+    // Create admin_of relationship between user and tenant
+    await permit.api.relationshipTuples.create({
+      subject: `User:${userId}`,
+      relation: 'admin_of',
+      object: `Tenant:${tenantId || 'default'}`
     });
 
-    console.log('Response:', JSON.stringify(response.data, null, 2));
-
-    res.status(200).json({ message: 'Role assigned successfully', response: response.data });
+    res.status(200).json({ message: 'Admin relationship assigned successfully' });
   } catch (error) {
-    console.error('Error assigning role:', error.response?.data || error.message);
-    res.status(500).json({
-      error: 'Failed to assign role',
-      details: error.response?.data || error.message
-    });
+    console.error('Error assigning admin relationship:', error);
+    res.status(500).json({ error: 'Failed to assign admin relationship' });
   }
 };
 
@@ -93,39 +72,19 @@ const getUsers = async (req, res, next) => {
 };
 
 
-// Check permission for a user on a specific resource
+//  checkPermission function
 const checkPermission = async (req, res, next) => {
   try {
     const { userId, action, resourceType, resourceId } = req.body;
 
-    // Allow resourceId to be optional when creating new resources
     if (!userId || !action || !resourceType || (!resourceId && action !== 'create')) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Check permission at the document level
-    const resource = resourceId ? `${resourceType}:${resourceId}` : `${resourceType}:default`;
-    let permitted = await permit.check(userId, action, resource);
+    const resource = resourceId ? `${resourceType}:${resourceId}` : `${resourceType}`;
 
-    if (!permitted) {
-      // If no permission at document level, check if the document has a parent category
-      const document = await permit.api.resourceInstances.get('Document', resourceId);
-      if (document) {
-        // Get the category (parent relationship)
-        const categoryRelation = await permit.api.relationshipTuples.list({
-          subject: `Document:${resourceId}`,
-          relation: 'parent'
-        });
-
-        const categoryId = categoryRelation.data[0]?.object?.split(':')[1];
-
-        if (categoryId) {
-          // Check permission at the category level
-          const categoryResource = `Category:${categoryId}`;
-          permitted = await permit.check(userId, action, categoryResource);
-        }
-      }
-    }
+    // Directly check permission on the resource
+    const permitted = await permit.check(userId, action, resource);
 
     if (permitted) {
       res.status(200).json({ permitted: true, message: 'User has permission' });
@@ -139,68 +98,28 @@ const checkPermission = async (req, res, next) => {
 };
 
 
-
-const assignSuperAdminRole = async (req, res) => {
-  try {
-    const { userId } = req.body;
-    await permit.api.roleAssignments.assign({
-      user: userId,
-      role: "SuperAdmin",
-      tenant: "default"
-    });
-    res.status(200).json({ message: "SuperAdmin role assigned successfully" });
-  } catch (error) {
-    console.error("Error assigning SuperAdmin role:", error);
-    res.status(500).json({ error: "Failed to assign SuperAdmin role" });
-  }
-};
-
-const createRole = async (req, res) => {
-  try {
-    const { key, name, description, permissions, extends: extendedRoles } = req.body;
-
-    const roleData = {
-      key,
-      name,
-      description,
-      permissions,
-      extends: extendedRoles
-    };
-
-    const response = await permit.api.roles.create(roleData);
-
-    res.status(201).json({ message: 'Role created successfully', role: response });
-  } catch (error) {
-    console.error('Error creating role:', error);
-    res.status(500).json({
-      error: 'Failed to create role',
-      details: error.response?.data?.message || error.message
-    });
-  }
-};
-
-
 // Create a relationship between resources
-const createRelationship = async (req, res, next) => {
+const createRelationship = async (req, res) => {
   try {
-    const { subject, relation, object } = req.body;
+    const { userId, relation, resourceType, resourceKey } = req.body;
 
-    if (!subject || !relation || !object) {
+    if (!userId || !relation || !resourceType || !resourceKey) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     await permit.api.relationshipTuples.create({
-      subject: subject,
+      subject: `User:${userId}`,
       relation: relation,
-      object: object
+      object: `${resourceType}:${resourceKey}`
     });
 
-    res.status(201).json({ message: 'Relationship tuple created successfully' });
+    res.status(201).json({ message: 'Relationship created successfully' });
   } catch (error) {
-    console.error('Error creating relationship tuple:', error);
-    res.status(500).json({ error: 'Failed to create relationship tuple', details: error.message });
+    console.error('Error creating relationship:', error);
+    res.status(500).json({ error: 'Failed to create relationship', details: error.message });
   }
 };
+
 
 const createResourceInstance = async (req, res, next) => {
   try {
@@ -223,32 +142,6 @@ const createResourceInstance = async (req, res, next) => {
   }
 };
 
-// Get user's direct roles and permissions
-const getUserRoles = async (req, res, next) => {
-  try {
-    const { userId } = req.params;
-
-    const userRoles = await permit.api.users.getAssignedRoles(userId);
-
-    res.status(200).json(userRoles);
-  } catch (error) {
-    console.error('Error fetching user roles:', error);
-    res.status(500).json({ error: 'Failed to fetch user roles' });
-  }
-};
-
-const listRoles = async (req, res, next) => {
-  try {
-    const roles = await permit.api.roles.list();
-    res.status(200).json(roles);
-  } catch (error) {
-    console.error('Error listing roles:', error);
-    res.status(500).json({
-      error: 'Failed to list roles',
-      details: error.message
-    });
-  }
-};
 
 const listResourceInstances = async (req, res, next) => {
   try {
@@ -260,16 +153,7 @@ const listResourceInstances = async (req, res, next) => {
   }
 };
 
-const getRole = async (req, res, next) => {
-  try {
-    const { roleKey } = req.params;
-    const role = await permit.api.roles.get(roleKey);
-    res.status(200).json(role);
-  } catch (error) {
-    console.error('Error getting role:', error);
-    res.status(500).json({ error: 'Failed to get role', details: error.message });
-  }
-};
+
 const listRolesAndResources = async (req, res, next) => {
   try {
     const roles = await permit.api.roles.list();
@@ -292,19 +176,42 @@ const listRolesAndResources = async (req, res, next) => {
   }
 };
 
+const getUserRelationships = async (req, res) => {
+  try {
+    const userId = req.headers['user-id'];
+    if (!userId) {
+      return res.status(401).json({ error: 'User ID not provided' });
+    }
+
+    const resourceType = 'user'; // Ensure this matches your Permit.io resource type
+
+    // Fetch relationships with include_total_count for consistent structure
+    const relationshipsResponse = await permit.api.relationshipTuples.list({
+      subject: `${resourceType}:${userId}`,
+      include_total_count: true,
+    });
+
+    console.log('Relationships Response:', JSON.stringify(relationshipsResponse, null, 2));
+
+    const relationships = relationshipsResponse.data || relationshipsResponse;
+
+    res.status(200).json({ relationships });
+  } catch (error) {
+    console.error('Error fetching user relationships:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch user relationships' });
+  }
+};
+
+
 
 module.exports = {
   registerUser,
-  assignRole,
-  listRoles,
   checkPermission,
   createRelationship,
   getUsers,
-  getUserRoles,
-  getRole,
-  createRole,
-  assignSuperAdminRole,
   createResourceInstance,
   listResourceInstances,
-  listRolesAndResources
+  listRolesAndResources,
+  assignAdmin,
+  getUserRelationships,
 };

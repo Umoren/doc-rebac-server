@@ -7,12 +7,13 @@ const checkPermission = (action, resource) => async (req, res, next) => {
             return res.status(401).json({ error: 'User ID not provided' });
         }
 
-        const userRoles = await permit.api.users.getAssignedRoles(userId);
-        if (userRoles.some(role => role.role === 'SuperAdmin')) {
-            return next(); // SuperAdmin can do anything
-        }
+        const resourceId = req.params.id || req.body.resourceId || req.body.resourceKey || 'default';
 
-        const permitted = await permit.check(userId, action, resource);
+        const resourceString = `${resource}:${resourceId}`;
+
+        // Directly check permission based on relationships
+        const permitted = await permit.check(userId, action, resourceString);
+
         if (permitted) {
             next();
         } else {
