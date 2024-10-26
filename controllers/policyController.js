@@ -183,21 +183,18 @@ const getUserRelationships = async (req, res) => {
       return res.status(401).json({ error: 'User ID not provided' });
     }
 
-    const resourceType = 'user'; // Ensure this matches your Permit.io resource type
-
-    // Fetch relationships with include_total_count for consistent structure
+    // Adjust to accurately reflect the user-type
     const relationshipsResponse = await permit.api.relationshipTuples.list({
-      subject: `${resourceType}:${userId}`,
+      subject: `User:${userId}`,
       include_total_count: true,
     });
 
-    console.log('Relationships Response:', JSON.stringify(relationshipsResponse, null, 2));
+    console.log('Relationships fetched:', JSON.stringify(relationshipsResponse, null, 2));
 
     const relationships = relationshipsResponse.data || relationshipsResponse;
-
     res.status(200).json({ relationships });
   } catch (error) {
-    console.error('Error fetching user relationships:', error.response?.data || error.message);
+    console.error('Error fetching user relationships:', error);
     res.status(500).json({ error: 'Failed to fetch user relationships' });
   }
 };

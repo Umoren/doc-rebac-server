@@ -13,8 +13,8 @@ router.get('/list-resource-instances', policyController.listResourceInstances);
 // Protected routes
 router.post('/check-permission', policyController.checkPermission);
 router.post('/create-relationship', policyController.createRelationship);
-router.get('/users', checkPermission('read', 'User'), policyController.getUsers);
-router.get('/users/:userId', checkPermission('read', 'User'), policyController.getUsers);
+router.get('/users', policyController.getUsers);
+router.get('/users/:userId', policyController.getUsers);
 router.post('/create-resource-instance', checkPermission('create', 'ResourceInstance'), policyController.createResourceInstance);
 
 

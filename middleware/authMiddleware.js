@@ -7,11 +7,13 @@ const checkPermission = (action, resource) => async (req, res, next) => {
             return res.status(401).json({ error: 'User ID not provided' });
         }
 
-        const resourceId = req.params.id || req.body.resourceId || req.body.resourceKey || 'default';
+        // Determine if we’re listing all users (no specific resourceId needed)
+        const isListingAllUsers = resource === 'User' && action === 'read' && !req.params.id;
 
-        const resourceString = `${resource}:${resourceId}`;
+        // Define the resource string accordingly
+        const resourceString = isListingAllUsers ? resource : `${resource}:${req.params.id || req.body.resourceId || req.body.resourceKey || 'default'}`;
 
-        // Directly check permission based on relationships
+        // Check permission based on relationships
         const permitted = await permit.check(userId, action, resourceString);
 
         if (permitted) {
@@ -24,5 +26,6 @@ const checkPermission = (action, resource) => async (req, res, next) => {
         res.status(500).json({ error: 'Failed to check permission' });
     }
 };
+
 
 module.exports = { checkPermission };

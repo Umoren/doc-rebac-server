@@ -8,15 +8,11 @@ const createDocument = async (req, res) => {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        // Create the document resource instance with attributes
+        // Create the document resource instance
         const document = await permit.api.resourceInstances.create({
             resource: 'Document',
             key: key,
             tenant: tenant || 'default',
-            attributes: {
-                categoryKey: categoryKey,
-                ownerId: ownerId,
-            },
         });
 
         res.status(201).json(document);
